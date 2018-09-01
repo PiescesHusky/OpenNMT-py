@@ -23,8 +23,8 @@ class PositionalEncoding(nn.Module):
     def __init__(self, dropout, dim, max_len=5000):
         pe = torch.zeros(max_len, dim)
         position = torch.arange(0, max_len).unsqueeze(1)
-        div_term = torch.exp((torch.arange(0, dim, 2) *
-                             -(math.log(10000.0) / dim)).float())
+        div_term = torch.exp((torch.arange(0, dim, 2, dtype=torch.float) *
+                             -(math.log(10000.0) / dim)))
         pe[:, 0::2] = torch.sin(position.float() * div_term)
         pe[:, 1::2] = torch.cos(position.float() * div_term)
         pe = pe.unsqueeze(1)
@@ -34,8 +34,11 @@ class PositionalEncoding(nn.Module):
         self.dim = dim
 
     def forward(self, emb, step=None):
+        print('pre emb', emb.size())
         emb = emb * math.sqrt(self.dim)
+        print('post emb', emb.size(), 'pe', self.pe.size())
         if step is None:
+            print('emb in PE embeddings.py', emb.size())#test
             emb = emb + self.pe[:emb.size(0)]
         else:
             emb = emb + self.pe[step]
@@ -100,7 +103,10 @@ class Embeddings(nn.Module):
         if feat_padding_idx is None:
             feat_padding_idx = []
         self.word_padding_idx = word_padding_idx
-
+#latt
+        self.feat_merge = feat_merge
+        self.feat_vocab_sizes = feat_vocab_sizes
+#latt
         # Dimensions and padding for constructing the word embedding matrix
         vocab_sizes = [word_vocab_size]
         emb_dims = [word_vec_size]
@@ -110,6 +116,8 @@ class Embeddings(nn.Module):
         # (these have no effect if feat_vocab_sizes is empty)
         if feat_merge == 'sum':
             feat_dims = [word_vec_size] * len(feat_vocab_sizes)
+        elif feat_merge == 'latt':   #latt
+            feat_dims = [feat_vec_size] * 1
         elif feat_vec_size > 0:
             feat_dims = [feat_vec_size] * len(feat_vocab_sizes)
         else:
@@ -122,16 +130,39 @@ class Embeddings(nn.Module):
         # The embedding matrix look-up tables. The first look-up table
         # is for words. Subsequent ones are for features, if any exist.
         emb_params = zip(vocab_sizes, emb_dims, pad_indices)
-        embeddings = [nn.Embedding(vocab, dim, padding_idx=pad, sparse=sparse)
-                      for vocab, dim, pad in emb_params]
-        emb_luts = Elementwise(feat_merge, embeddings)
 
+#latt
+        if feat_merge == 'latt':
+            embeddings = [nn.Embedding(vocab_sizes[0], emb_dims[0], padding_idx=pad_indices[0], sparse=sparse)]
+            emb_params_senses = zip(vocab_sizes[1:], emb_dims[1:], pad_indices[1:])
+            print('emb_params_senses', emb_params_senses) #test
+            embeddings_senses = [nn.Embedding(vocab, dim, padding_idx=pad, sparse=sparse)
+                               for vocab, dim, pad in emb_params_senses]
+            print('embeddings_senses', embeddings_senses)
+        else:
+            for vocab, dim, pad in emb_params:
+                print('emb_params', vocab, dim, pad)
+            #embeddings = [nn.Embedding(vocab_sizes[0], emb_dims[0], padding_idx=pad_indices[0], sparse=sparse)]
+            embeddings = [nn.Embedding(vocab, dim, padding_idx=pad, sparse=sparse)
+                          for vocab, dim, pad in emb_params]
+
+#latt
+        if feat_merge == 'latt':
+            print('embeddings_senses in embeddings.py', embeddings_senses) # test
+            emb_luts_senses = Elementwise('latt_senses', embeddings_senses) #latt
+            print('emb_luts_senses in embeddings.py', emb_luts_senses) # test
+        print('embeddings in embeddings.py', embeddings) # test
+        emb_luts = Elementwise(feat_merge, embeddings)
+        print('emb_luts in embeddings.py', emb_luts) # test
         # The final output size of word + feature vectors. This can vary
         # from the word vector size if and only if features are defined.
         # This is the attribute you should access if you need to know
         # how big your embeddings are going to be.
+        print('emb_dims', emb_dims)
         self.embedding_size = (sum(emb_dims) if feat_merge == 'concat'
                                else word_vec_size)
+        #self.embedding_size = (sum(emb_dims) if feat_merge == 'none'
+        #                       else word_vec_size)
 
         # The sequence of operations that converts the input sequence
         # into a sequence of embeddings. At minimum this consists of
@@ -142,7 +173,12 @@ class Embeddings(nn.Module):
         self.make_embedding = nn.Sequential()
         self.make_embedding.add_module('emb_luts', emb_luts)
 
-        if feat_merge == 'mlp' and len(feat_vocab_sizes) > 0:
+#latt
+        if feat_merge == 'latt':
+            self.make_embedding_latt = nn.Sequential()
+            self.make_embedding_latt.add_module('emb_luts', emb_luts_senses)
+#latt
+        if feat_merge == 'mlp': #latt   ## and len(feat_vocab_sizes) > 0:
             in_dim = sum(emb_dims)
             out_dim = word_vec_size
             mlp = nn.Sequential(nn.Linear(in_dim, out_dim), nn.ReLU())
@@ -152,7 +188,11 @@ class Embeddings(nn.Module):
 
         if self.position_encoding:
             pe = PositionalEncoding(dropout, self.embedding_size)
+            print('pe in embeddings.py', pe)
             self.make_embedding.add_module('pe', pe)
+#latt
+            if feat_merge == 'latt':
+                self.make_embedding_latt.add_module('pe', pe)
 
     @property
     def word_lut(self):
@@ -186,13 +226,48 @@ class Embeddings(nn.Module):
         Return:
             `FloatTensor`: word embeddings `[len x batch x embedding_size]`
         """
+#latt
+        if self.feat_merge == 'latt' and len(self.feat_vocab_sizes) > 0:
+            print('source coming in in embeddings.py', source.size()) # test
+            print('self.feat_vocab_sizes', self.feat_vocab_sizes) # test
+            source_backup_latt = source #latt
+            source, source_backup_latt = torch.split(source, [1,5], dim = 2)
+            source_backup_latt = torch.cat(torch.split(source_backup_latt, 1, dim = 2), dim = 1)
+            print('after size source_backup_latt', source_backup_latt.size())
+        
+        
+        print('source in embeddings.py', source.size())
         if self.position_encoding:
             for i, module in enumerate(self.make_embedding._modules.values()):
                 if i == len(self.make_embedding._modules.values()) - 1:
+                    print('source pre if in embeddings.py', source) # test
+                    print('module if', module) # test
                     source = module(source, step=step)
+                    print('source after if in embeddings.py', source) # test
                 else:
+                    print('source else in embeddings.py', source) # test
                     source = module(source)
+            print('self.make_embedding._modules', self.make_embedding._modules)
         else:
             source = self.make_embedding(source)
-
+        print('source after embed in embeddings.py', source.size()) # test
+#latt
+        #print('source_backup_latt', source_backup_latt.size())
+        if self.feat_merge == 'latt' and len(self.feat_vocab_sizes) > 0:
+            print('source_backup_latt', source_backup_latt.size())
+            if self.position_encoding:
+                for i, module in enumerate(self.make_embedding_latt._modules.values()):
+                    print('source_backup_latt', i, module, source_backup_latt.size())
+                    print('self.make_embedding_latt._modules.values()', self.make_embedding_latt._modules.values())
+                    if i == len(self.make_embedding_latt._modules.values()) - 1:
+                        print('source_latt pre if in embeddings.py', source_backup_latt) # test
+                        print('module_latt if', module) # test
+                        source_backup_latt = module(source_backup_latt, step=step)
+                        print('source_latt after if in embeddings.py', source_backup_latt) # test
+                    else:
+                        print('source else in embeddings.py', source_backup_latt) # test
+                        source_backup_latt = module(source_backup_latt)
+               # 5 in torch.cunk below need to be updated or improved
+            source_backup_latt = torch.cat(torch.chunk(source_backup_latt, 5, dim = 1), dim = 2)
+#latt
         return source
