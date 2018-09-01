@@ -17,6 +17,7 @@ class LayerNorm(nn.Module):
     def forward(self, x):
         mean = x.mean(-1, keepdim=True)
         std = x.std(-1, keepdim=True)
+        print(self.a_2.size(), x.size())
         return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
 
 
@@ -33,19 +34,42 @@ class Elementwise(nn.ModuleList):
     """
 
     def __init__(self, merge=None, *args):
-        assert merge in [None, 'first', 'concat', 'sum', 'mlp']
+        assert merge in [None, 'first', 'concat', 'sum', 'mlp', 'latt', 'latt_senses'] #latt
         self.merge = merge
         super(Elementwise, self).__init__(*args)
 
     def forward(self, inputs):
         inputs_ = [feat.squeeze(2) for feat in inputs.split(1, dim=2)]
-        assert len(self) == len(inputs_)
+        print(len(self), len(inputs_)) #test
+#latt
+        if self.merge == 'latt':
+            print('len self', len(self)) #test
+            assert len(self) == 1
+        elif self.merge == 'concat':
+            print('len self', len(self)) #test
+            assert len(self) == 1
+        elif self.merge == 'mlp':
+            print('len self', len(self)) #test
+            assert len(self) == 1
+        elif self.merge == 'latt_senses':
+            print('len self', len(self)) #test
+            assert len(self) == 1
+        elif self.merge == 'sum':
+            print('len self', len(self)) #test
+            assert len(self) == 1
+        else:
+            print('len self', len(self), len(inputs_)) #test
+            assert len(self) == len(inputs_)
+#latt
         outputs = [f(x) for f, x in zip(self, inputs_)]
+        print('outputs in util_class.py', outputs[0].size(), outputs)
         if self.merge == 'first':
             return outputs[0]
         elif self.merge == 'concat' or self.merge == 'mlp':
             return torch.cat(outputs, 2)
         elif self.merge == 'sum':
             return sum(outputs)
+        elif self.merge == 'latt_senses':
+            return torch.cat(torch.unbind(outputs[0]))
         else:
-            return outputs
+            return outputs[0] #latt solve problem of list, otherwise, error pops up!
