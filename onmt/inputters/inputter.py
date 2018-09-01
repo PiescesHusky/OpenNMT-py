@@ -56,16 +56,21 @@ def get_fields(data_type, n_src_features, n_tgt_features):
 
 def load_fields_from_vocab(vocab, data_type="text"):
     """
-    Load Field objects from `vocab.pt` file.
+    Load Field objects from `vocab.pt` file.  ##stefan: input vocab: list of tuples
     """
+    print("prevocab", vocab[:3]) #test
     vocab = dict(vocab)
+    print("postvocab", vocab)  #test
     n_src_features = len(collect_features(vocab, 'src'))
     n_tgt_features = len(collect_features(vocab, 'tgt'))
+    print('src', n_src_features, 'tgt', n_tgt_features)  #test
     fields = get_fields(data_type, n_src_features, n_tgt_features)
+    print('1fields', fields)  #test
     for k, v in vocab.items():
         # Hack. Can't pickle defaultdict :(
         v.stoi = defaultdict(lambda: 0, v.stoi)
         fields[k].vocab = v
+    print('2fields', fields)
     return fields
 
 
@@ -161,6 +166,7 @@ def collect_features(fields, side="src"):
         if key not in fields:
             break
         feats.append(key)
+    print('feats', feats)   #test
     return feats
 
 
@@ -175,6 +181,7 @@ def collect_feature_vocabs(fields, side):
         if key not in fields:
             break
         feature_vocabs.append(fields[key].vocab)
+    print('feature_vocabs', feature_vocabs)   #test
     return feature_vocabs
 
 
