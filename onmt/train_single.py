@@ -82,7 +82,7 @@ def main(opt):
         checkpoint = None
         model_opt = opt
 
-    # Peek the fisrt dataset to determine the data_type.
+    # Peek the first dataset to determine the data_type.
     # (All datasets have the same data_type).
     first_dataset = next(lazily_load_dataset("train", opt))
     data_type = first_dataset.data_type
@@ -101,8 +101,18 @@ def main(opt):
                     % (j, len(fields[feat].vocab)))
 
     # Build model.
+    print('opt.feat_merge', opt.feat_merge) #test  opt.feat_merge
+    #print('opt', opt, 'model_opt', model_opt) #test 
+    print('t_opt', type(opt), 'type model_opt', type(model_opt)) #test
     model = build_model(model_opt, opt, fields, checkpoint)
+    #print('model', model) #test
     n_params, enc, dec = _tally_parameters(model)
+    print('n_params in train_single.py', n_params) #test
+    print('enc in train_single.py', enc) #test
+    print('dec in train_single.py', dec) #test
+    print('fields', fields) #test
+    print('fields_src_feat', fields["src_feat_0"].vocab) #test
+    print('fields_src_feat', type(fields["src_feat_0"].vocab)) #test
     logger.info('encoder: %d' % enc)
     logger.info('decoder: %d' % dec)
     logger.info('* number of parameters: %d' % n_params)
@@ -113,7 +123,7 @@ def main(opt):
 
     # Build model saver
     model_saver = build_model_saver(model_opt, opt, model, fields, optim)
-
+    
     trainer = build_trainer(
         opt, model, fields, optim, data_type, model_saver=model_saver)
 
@@ -124,6 +134,7 @@ def main(opt):
         lazily_load_dataset("valid", opt), fields, opt)
 
     # Do training.
+    print('train_iter_fct in train_single.py', train_iter_fct) #test
     trainer.train(train_iter_fct, valid_iter_fct, opt.train_steps,
                   opt.valid_steps)
 
