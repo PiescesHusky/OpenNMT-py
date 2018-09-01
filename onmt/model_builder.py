@@ -41,11 +41,25 @@ def build_embeddings(opt, word_dict, feature_dicts, for_encoder=True):
 
     word_padding_idx = word_dict.stoi[inputters.PAD_WORD]
     num_word_embeddings = len(word_dict)
-
+    
     feats_padding_idx = [feat_dict.stoi[inputters.PAD_WORD]
                          for feat_dict in feature_dicts]
-    num_feat_embeddings = [len(feat_dict) for feat_dict in
-                           feature_dicts]
+    print('feats_padding_idx', feats_padding_idx)
+#latt
+    if opt.feat_merge == 'latt' and len(feature_dicts) > 0:
+        for feat_dict in feature_dicts:
+            print('feat_dict', len(feat_dict))
+        print('old_fdict_len', len(feature_dicts)) #test
+        feature_dicts = inputters.merge_vocabs(feature_dicts)
+        print('new_fdict_len', len(feature_dicts)) #test
+        num_feat_embeddings = [len(feature_dicts)]
+        print('num_feat_embeddings', num_feat_embeddings)
+        print('new_fdict_len', len(feature_dicts))
+#latt
+    else:
+        print('ac num_feat_embed')
+        num_feat_embeddings = [len(feat_dict) for feat_dict in
+                               feature_dicts]
 
     return Embeddings(word_vec_size=embedding_dim,
                       position_encoding=opt.position_encoding,
@@ -106,6 +120,7 @@ def build_decoder(opt, embeddings):
         return InputFeedRNNDecoder(opt.rnn_type, opt.brnn,
                                    opt.dec_layers, opt.rnn_size,
                                    opt.global_attention,
+                                   opt.global_attention_function,
                                    opt.coverage_attn,
                                    opt.context_gate,
                                    opt.copy_attn,
@@ -116,6 +131,7 @@ def build_decoder(opt, embeddings):
         return StdRNNDecoder(opt.rnn_type, opt.brnn,
                              opt.dec_layers, opt.rnn_size,
                              opt.global_attention,
+                             opt.global_attention_function,
                              opt.coverage_attn,
                              opt.context_gate,
                              opt.copy_attn,
@@ -159,7 +175,14 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
     if model_opt.model_type == "text":
         src_dict = fields["src"].vocab
         feature_dicts = inputters.collect_feature_vocabs(fields, 'src')
+#latt  
+     #   if model_opt.feat_merge == 'latt':
+        #    src_embeddings, src_embeddings_latt = build_embeddings(model_opt, src_dict, feature_dicts)
+       # else:
+       #     src_embeddings = build_embeddings(model_opt, src_dict, feature_dicts)
+#latt
         src_embeddings = build_embeddings(model_opt, src_dict, feature_dicts)
+        print('src_embeddings', src_embeddings)
         encoder = build_encoder(model_opt, src_embeddings)
     elif model_opt.model_type == "img":
         encoder = ImageEncoder(model_opt.enc_layers,
@@ -177,6 +200,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
     # Build decoder.
     tgt_dict = fields["tgt"].vocab
     feature_dicts = inputters.collect_feature_vocabs(fields, 'tgt')
+    print('feature_dicts', len(feature_dicts)) #test
     tgt_embeddings = build_embeddings(model_opt, tgt_dict,
                                       feature_dicts, for_encoder=False)
 
@@ -198,9 +222,13 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None):
 
     # Build Generator.
     if not model_opt.copy_attn:
+        if model_opt.generator_function == "sparsemax":
+            gen_func = onmt.modules.sparse_activations.LogSparsemax(dim=-1)
+        else:
+            gen_func = nn.LogSoftmax(dim=-1)
         generator = nn.Sequential(
-            nn.Linear(model_opt.rnn_size, len(fields["tgt"].vocab)),
-            nn.LogSoftmax(dim=-1))
+            nn.Linear(model_opt.rnn_size, len(fields["tgt"].vocab)), gen_func
+        )
         if model_opt.share_decoder_embeddings:
             generator[0].weight = decoder.embeddings.word_lut.weight
     else:
