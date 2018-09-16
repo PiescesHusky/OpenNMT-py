@@ -167,6 +167,7 @@ class TransformerEncoder(EncoderBase):
         self.lattice = nn.ModuleList(
             [LatticeEncoderLayer(d_model, heads, d_ff, dropout)
              for _ in range(3)])
+# number in range() must change with things below
 #latt
         self.layer_norm = onmt.modules.LayerNorm(d_model)
 
@@ -211,6 +212,16 @@ class TransformerEncoder(EncoderBase):
                 print('size before lattice', out.size(), out_latt.size())#test
                 out = self.lattice[i](out, out_latt)
 #latt
+
+
+# additional layer after lattice
+   #     if feat_merge == 'latt':
+    #        for i in range(2):
+ #               print(i, 'out', out) #test
+    #            print('size before additional normal transformer after lattice', out.size(), mask.size())#test
+   #             out = self.transformer[i](out, mask)
+
+# additional layer after lattice
 
         out = self.layer_norm(out)
 
